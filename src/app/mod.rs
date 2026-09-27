@@ -17,8 +17,8 @@ mod window;
 
 pub(crate) use self::applet::applet_settings;
 use self::applet::{
-    applet_button, applet_fallback_indicator, applet_indicator, panel_button_size,
-    panel_fallback_active, select_provider,
+    PanelDisplayOptions, applet_button, applet_fallback_indicator, applet_indicator,
+    panel_button_size, panel_fallback_active, select_provider,
 };
 use self::popup_view::ProviderLoginStates;
 use self::provider_assets::{provider_icon_handle, provider_icon_variant};
@@ -32,7 +32,8 @@ use self::window::{
 };
 use crate::config::{
     APP_ID, Config, ManagedClaudeAccountConfig, ManagedCodexAccountConfig,
-    ManagedCursorAccountConfig, PanelIconStyle, ResetTimeFormat, UsageAmountFormat,
+    ManagedCursorAccountConfig, PanelIconStyle, PanelValueDisplay, ResetTimeFormat,
+    UsageAmountFormat,
 };
 use crate::demo_env;
 use crate::model::{
@@ -53,6 +54,10 @@ use crate::providers::kimi::{
 };
 use crate::providers::minimax::{self, MinimaxLoginEvent, MinimaxLoginState};
 use crate::providers::opencode_go::login::{OpenCodeGoLoginEvent, OpenCodeGoLoginState};
+use crate::providers::openrouter::{
+    self,
+    login::{OpenRouterLoginEvent, OpenRouterLoginState},
+};
 use crate::providers::registry;
 use crate::providers::zai::ZaiLoginState;
 use crate::refresh_owner::{
@@ -130,6 +135,8 @@ pub struct AppModel {
     minimax_login_handle: Option<Handle>,
     kimi_login: Option<KimiLoginState>,
     kimi_login_handle: Option<Handle>,
+    openrouter_login: Option<OpenRouterLoginState>,
+    openrouter_login_handle: Option<Handle>,
     antigravity_login: Option<AntigravityLoginState>,
     antigravity_login_handle: Option<Handle>,
     opencode_go_login: Option<OpenCodeGoLoginState>,
@@ -212,6 +219,10 @@ pub enum Message {
     SetResetTimeFormat(ResetTimeFormat),
     SetUsageAmountFormat(UsageAmountFormat),
     SetPanelIconStyle(PanelIconStyle),
+    SetPanelValueDisplay(PanelValueDisplay),
+    SetShowAllProviders(bool),
+    SetShowAllAccounts(bool),
+    SetPanelFontSize(u16),
     CheckUpdates,
     UpdateChecked { status: UpdateStatus, attempt: u32 },
     RetryUpdateCheck(u32),
@@ -283,8 +294,16 @@ impl cosmic::Application for AppModel {
         crate::debug_env::apply(&mut state);
         demo_env::apply(&initial_config, &mut state);
         let selected_provider = select_provider(initial_config.selected_provider, &state);
+        let panel_options = PanelDisplayOptions {
+            style: initial_config.panel_icon_style,
+            value_display: initial_config.panel_value_display,
+            show_all_providers: initial_config.show_all_providers,
+            show_all_accounts: initial_config.show_all_accounts,
+            font_size: f32::from(initial_config.effective_panel_font_size()),
+            usage_amount_format: initial_config.usage_amount_format,
+        };
         let (applet_width, applet_height) =
-            panel_button_size(&core, &state, initial_config.panel_icon_style);
+            panel_button_size(&core, &state, panel_options, selected_provider);
         core.applet.suggested_bounds = Some(Size::new(applet_width, applet_height));
         let mut app = AppModel {
             core,
@@ -315,6 +334,8 @@ impl cosmic::Application for AppModel {
             minimax_login_handle: None,
             kimi_login: None,
             kimi_login_handle: None,
+            openrouter_login: None,
+            openrouter_login_handle: None,
             antigravity_login: None,
             antigravity_login_handle: None,
             opencode_go_login: None,
@@ -368,18 +389,30 @@ impl cosmic::Application for AppModel {
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
+        let panel_options = PanelDisplayOptions {
+            style: self.config.panel_icon_style,
+            value_display: self.config.panel_value_display,
+            show_all_providers: self.config.show_all_providers,
+            show_all_accounts: self.config.show_all_accounts,
+            font_size: f32::from(self.config.effective_panel_font_size()),
+            usage_amount_format: self.config.usage_amount_format,
+        };
         let indicator = if panel_fallback_active(&self.state) {
             applet_fallback_indicator(&self.core)
         } else {
             applet_indicator(
                 &self.state,
                 self.selected_provider,
-                self.config.panel_icon_style,
-                self.config.usage_amount_format,
+                panel_options,
                 &self.core,
             )
         };
-        let size = panel_button_size(&self.core, &self.state, self.config.panel_icon_style);
+        let size = panel_button_size(
+            &self.core,
+            &self.state,
+            panel_options,
+            self.selected_provider,
+        );
         let button: Element<'_, Message> = applet_button(&self.core, size, indicator)
             .on_press(Message::TogglePopup)
             .into();
@@ -403,6 +436,7 @@ impl cosmic::Application for AppModel {
                 copilot: self.copilot_login.as_ref(),
                 minimax: self.minimax_login.as_ref(),
                 kimi: self.kimi_login.as_ref(),
+                openrouter: self.openrouter_login.as_ref(),
                 antigravity: self.antigravity_login.as_ref(),
                 opencode_go: self.opencode_go_login.as_ref(),
                 grok: self.grok_login.as_ref(),
@@ -550,6 +584,18 @@ impl AppModel {
             Message::SetPanelIconStyle(style) => {
                 return Some(self.set_panel_icon_style(style));
             }
+            Message::SetPanelValueDisplay(display) => {
+                return Some(self.set_panel_value_display(display));
+            }
+            Message::SetShowAllProviders(value) => {
+                return Some(self.set_show_all_providers(value));
+            }
+            Message::SetShowAllAccounts(value) => {
+                return Some(self.set_show_all_accounts(value));
+            }
+            Message::SetPanelFontSize(value) => {
+                return Some(self.set_panel_font_size(value));
+            }
             Message::ToggleAccountSelection(provider, account_id) => {
                 return Some(self.toggle_account_selection(provider, &account_id));
             }
@@ -610,6 +656,9 @@ impl AppModel {
                     }
                     (ProviderId::Zai, login::LoginEventKind::Zai(event)) => {
                         login::ZaiLoginFlow::on_event(self, event)
+                    }
+                    (ProviderId::OpenRouter, login::LoginEventKind::OpenRouter(event)) => {
+                        login::OpenRouterLoginFlow::on_event(self, event)
                     }
                     _ => Task::none(),
                 });

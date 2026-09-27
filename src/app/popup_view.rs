@@ -2,7 +2,7 @@
 
 mod badges;
 mod detail;
-mod settings;
+pub(crate) mod settings;
 
 use self::badges::{
     account_label_text, apply_alpha, badge_accent, badge_destructive, badge_destructive_soft,
@@ -15,7 +15,9 @@ use self::settings::{
 };
 use super::provider_assets::{provider_icon_handle, provider_icon_variant};
 use crate::app::{Message, PopupRoute};
-use crate::config::{Config, PanelIconStyle, ResetTimeFormat, UsageAmountFormat};
+use crate::config::{
+    Config, PanelIconStyle, PanelValueDisplay, ResetTimeFormat, UsageAmountFormat,
+};
 use crate::detection::DetectionSnapshot;
 use crate::fl;
 use crate::model::{AppState, ProviderId, ProviderRuntimeState, UsageWindow};
@@ -27,6 +29,7 @@ use crate::providers::cursor::CursorScanState;
 use crate::providers::gemini::{GeminiLoginState, GeminiLoginStatus};
 use crate::providers::kimi::login::KimiLoginState;
 use crate::providers::minimax::MinimaxLoginState;
+use crate::providers::openrouter::login::OpenRouterLoginState;
 use crate::providers::zai::login::ZaiLoginState;
 use crate::updates::UpdateStatus;
 use crate::usage_display;
@@ -55,6 +58,7 @@ pub struct ProviderLoginStates<'a> {
     pub copilot: Option<&'a CopilotLoginState>,
     pub minimax: Option<&'a MinimaxLoginState>,
     pub kimi: Option<&'a KimiLoginState>,
+    pub openrouter: Option<&'a OpenRouterLoginState>,
     pub antigravity: Option<&'a AntigravityLoginState>,
     pub opencode_go: Option<&'a crate::providers::opencode_go::login::OpenCodeGoLoginState>,
     pub grok: Option<&'a crate::providers::grok::GrokLoginState>,

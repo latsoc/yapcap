@@ -45,6 +45,8 @@ pub(super) fn test_app() -> AppModel {
         minimax_login_handle: None,
         kimi_login: None,
         kimi_login_handle: None,
+        openrouter_login: None,
+        openrouter_login_handle: None,
         antigravity_login: None,
         antigravity_login_handle: None,
         opencode_go_login: None,
