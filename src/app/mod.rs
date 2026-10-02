@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 mod applet;
+mod codex_resets;
 mod host_auth_watch;
 mod login;
 
@@ -121,6 +122,7 @@ pub struct AppModel {
     shared_control: SharedControlState,
     process_info: ProcessInfo,
     refresh_owner: Option<RefreshOwner>,
+    codex_reset: Option<codex_resets::PendingReset>,
     codex_login: Option<CodexLoginState>,
     codex_login_handle: Option<Handle>,
     claude_login: Option<ClaudeLoginState>,
@@ -168,6 +170,7 @@ pub enum LaunchMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PopupRoute {
     ProviderDetail,
+    CodexReset,
     Settings,
     ManageProviders,
     ManageAccounts(ProviderId),
@@ -191,6 +194,18 @@ pub enum Message {
     Tick,
     RefreshNow,
     ProviderRefreshed(Box<ProviderRefreshResult>),
+    PrepareCodexReset(String),
+    CodexResetPrepared(
+        String,
+        Result<codex::reset_credits::ResetOption, &'static str>,
+    ),
+    ConfirmCodexReset,
+    CodexResetConsumed(
+        String,
+        String,
+        Result<codex::reset_credits::ResetOutcome, &'static str>,
+    ),
+    CodexResetSuccessTimeout(String, String),
     SelectProvider(ProviderId),
     NavigateTo(PopupRoute),
     SetProviderEnabled(ProviderId, bool),
@@ -224,7 +239,10 @@ pub enum Message {
     SetShowAllAccounts(bool),
     SetPanelFontSize(u16),
     CheckUpdates,
-    UpdateChecked { status: UpdateStatus, attempt: u32 },
+    UpdateChecked {
+        status: UpdateStatus,
+        attempt: u32,
+    },
     RetryUpdateCheck(u32),
     OpenUrl(String),
     HostCliAuthChanged,
@@ -320,6 +338,7 @@ impl cosmic::Application for AppModel {
             shared_control,
             process_info,
             refresh_owner,
+            codex_reset: None,
             codex_login: None,
             codex_login_handle: None,
             claude_login: None,
@@ -447,8 +466,11 @@ impl cosmic::Application for AppModel {
                 account_page: self.detail_account_page,
                 provider_viewport_offset: self.provider_viewport_offset,
             },
-            &self.popup_route,
-            &self.update_status,
+            popup_view::PopupContext {
+                route: &self.popup_route,
+                update_status: &self.update_status,
+                codex_reset: self.codex_reset.as_ref(),
+            },
         );
         self.core
             .applet
@@ -533,6 +555,21 @@ impl AppModel {
             }
             Message::ProviderRefreshed(refresh_result) => {
                 return Some(self.handle_provider_refreshed(*refresh_result));
+            }
+            Message::PrepareCodexReset(account_id) => {
+                return Some(self.prepare_codex_reset(&account_id));
+            }
+            Message::CodexResetPrepared(account_id, result) => {
+                self.codex_reset_prepared(&account_id, result);
+            }
+            Message::ConfirmCodexReset => {
+                return Some(self.confirm_codex_reset());
+            }
+            Message::CodexResetConsumed(account_id, request_id, result) => {
+                return Some(self.codex_reset_consumed(&account_id, &request_id, result));
+            }
+            Message::CodexResetSuccessTimeout(account_id, request_id) => {
+                self.finish_codex_reset_success(&account_id, &request_id);
             }
             Message::ProviderAccountStatusesRefreshed(provider, accounts) => {
                 self.handle_provider_account_statuses_refreshed(provider, accounts);

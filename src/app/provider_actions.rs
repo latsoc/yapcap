@@ -642,6 +642,7 @@ impl AppModel {
 pub(super) fn popup_route_label(route: PopupRoute) -> &'static str {
     match route {
         PopupRoute::ProviderDetail => "provider_detail",
+        PopupRoute::CodexReset => "codex_reset",
         PopupRoute::Settings => "settings",
         PopupRoute::ManageProviders => "manage_providers",
         PopupRoute::ManageAccounts(provider) => match provider {
@@ -668,6 +669,7 @@ pub(super) fn popup_route_provider_label(
 ) -> &'static str {
     match route {
         PopupRoute::ProviderDetail => selected_provider.label(),
+        PopupRoute::CodexReset => ProviderId::Codex.label(),
         PopupRoute::Settings | PopupRoute::ManageProviders | PopupRoute::About => "none",
         PopupRoute::ManageAccounts(provider) => provider.label(),
     }

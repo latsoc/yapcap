@@ -31,6 +31,7 @@ pub(super) fn test_app() -> AppModel {
             lock_path,
         },
         refresh_owner: None,
+        codex_reset: None,
         codex_login: None,
         codex_login_handle: None,
         claude_login: None,

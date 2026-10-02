@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 mod badges;
+mod codex_reset;
 mod detail;
 pub(crate) mod settings;
 
@@ -9,6 +10,7 @@ use self::badges::{
     badge_neutral, badge_neutral_soft, badge_success, badge_success_soft, badge_warning,
     badge_warning_soft, badge_with_tooltip, disabled_account_label_text, plan_badge,
 };
+use self::codex_reset::codex_reset_view;
 use self::detail::{empty_state_view, selected_provider_view};
 use self::settings::{
     about_view, general_settings_view, manage_providers_view, provider_settings_view,
@@ -72,15 +74,25 @@ pub struct DetailSelection {
     pub provider_viewport_offset: usize,
 }
 
+pub struct PopupContext<'a> {
+    pub route: &'a PopupRoute,
+    pub update_status: &'a UpdateStatus,
+    pub codex_reset: Option<&'a crate::app::codex_resets::PendingReset>,
+}
+
 pub fn popup_content<'a>(
     state: &'a AppState,
     config: &'a Config,
     detection: &'a DetectionSnapshot,
     logins: ProviderLoginStates<'a>,
     selection: DetailSelection,
-    route: &'a PopupRoute,
-    update_status: &'a UpdateStatus,
+    context: PopupContext<'a>,
 ) -> Element<'a, Message> {
+    let PopupContext {
+        route,
+        update_status,
+        codex_reset,
+    } = context;
     let empty_state = popup_empty_state_active(state);
 
     let header = popup_header(route, empty_state, update_status);
@@ -94,7 +106,8 @@ pub fn popup_content<'a>(
                 selection.provider_viewport_offset,
             )
         }),
-        PopupRoute::Settings
+        PopupRoute::CodexReset
+        | PopupRoute::Settings
         | PopupRoute::ManageProviders
         | PopupRoute::ManageAccounts(_)
         | PopupRoute::About => None,
@@ -106,8 +119,11 @@ pub fn popup_content<'a>(
         detection,
         logins,
         selection,
-        route,
-        update_status,
+        PopupContext {
+            route,
+            update_status,
+            codex_reset,
+        },
     );
 
     let body = popup_body_container(route, body);
@@ -136,9 +152,13 @@ fn popup_body_view<'a>(
     detection: &'a DetectionSnapshot,
     logins: ProviderLoginStates<'a>,
     selection: DetailSelection,
-    route: &'a PopupRoute,
-    update_status: &'a UpdateStatus,
+    context: PopupContext<'a>,
 ) -> Element<'a, Message> {
+    let PopupContext {
+        route,
+        update_status,
+        codex_reset,
+    } = context;
     match route {
         PopupRoute::ProviderDetail if popup_empty_state_active(state) => empty_state_view(),
         PopupRoute::ProviderDetail => selected_provider_view(
@@ -148,6 +168,7 @@ fn popup_body_view<'a>(
             detection,
             selection.account_page,
         ),
+        PopupRoute::CodexReset => codex_reset_view(codex_reset),
         PopupRoute::Settings => general_settings_view(config),
         PopupRoute::ManageProviders => manage_providers_view(state),
         PopupRoute::ManageAccounts(id) => {

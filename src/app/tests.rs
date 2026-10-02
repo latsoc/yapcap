@@ -1510,6 +1510,7 @@ pub(super) fn test_app(refresh_owner: Option<RefreshOwner>) -> AppModel {
             lock_path,
         },
         refresh_owner,
+        codex_reset: None,
         codex_login: None,
         codex_login_handle: None,
         claude_login: None,
